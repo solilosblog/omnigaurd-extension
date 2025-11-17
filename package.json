@@ -1,0 +1,138 @@
+{
+  "name": "ai-dev-assistant",
+  "displayName": "AI Dev Assistant",
+  "description": "AI-powered coding assistant similar to Claude Code and GitHub Copilot Chat",
+  "version": "1.0.0",
+  "publisher": "niraj-chordia",
+  "icon": "media/icon.jpg",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Programming Languages",
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "assistant",
+    "copilot",
+    "chat",
+    "code",
+    "llm",
+    "openai",
+    "gpt"
+  ],
+  "activationEvents": [
+    "onView:aiDevAssistant.chat",
+    "onCommand:aiDevAssistant.openChat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiDevAssistant",
+          "title": "AI Dev Assistant",
+          "icon": "media/robot-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiDevAssistant": [
+        {
+          "type": "webview",
+          "id": "aiDevAssistant.chat",
+          "name": "Chat",
+          "icon": "media/robot-icon.svg",
+          "contextualTitle": "AI Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aiDevAssistant.openChat",
+        "title": "AI Dev Assistant: Open Chat",
+        "category": "AI Dev Assistant"
+      },
+      {
+        "command": "aiDevAssistant.showDiff",
+        "title": "AI Dev Assistant: Show Diff View"
+      },
+      {
+        "command": "aiDevAssistant.runCommand",
+        "title": "AI Dev Assistant: Run Terminal Command"
+      }
+    ],
+    "configuration": {
+      "title": "AI Dev Assistant",
+      "properties": {
+        "aiDevAssistant.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API Key (Alternative to .env file)",
+          "order": 1
+        },
+        "aiDevAssistant.model": {
+          "type": "string",
+          "default": "gpt-4",
+          "enum": [
+            "gpt-4",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo"
+          ],
+          "description": "OpenAI model to use",
+          "order": 2
+        },
+        "aiDevAssistant.maxTokens": {
+          "type": "number",
+          "default": 2000,
+          "description": "Maximum tokens in AI response",
+          "order": 3
+        },
+        "aiDevAssistant.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Creativity level (0 = focused, 2 = creative)",
+          "order": 4
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "@vscode/test-electron": "^2.3.8",
+    "eslint": "^8.56.0",
+    "glob": "^10.3.10",
+    "mocha": "^10.2.0",
+    "typescript": "^5.3.3",
+    "@vscode/vsce": "^2.22.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.5",
+    "dotenv": "^16.3.1",
+    "uuid": "^9.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/ai-dev-assistant.git"
+  },
+  "license": "MIT"
+}

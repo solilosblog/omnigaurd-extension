@@ -1,0 +1,66 @@
+# VS Code packaging ignore file
+# Files listed here will NOT be included in the .vsix package
+
+# Source files (only include compiled output)
+src/**
+tsconfig.json
+
+# Tests
+test/**
+tests/**
+out/test/**
+
+# Development tools
+.vscode/**
+.vscode-test/**
+.eslintrc.*
+.prettierrc.*
+.prettierignore
+eslint.config.js
+jest.config.*
+
+# Git
+.git/**
+.gitignore
+.gitattributes
+
+# Documentation (you can include these if you want)
+CHANGELOG.md
+CONTRIBUTING.md
+
+# Environment files (NEVER include API keys!)
+.env
+.env.*
+.envrc
+
+# Build artifacts
+**/*.map
+coverage/**
+dist/**
+temp/**
+tmp/**
+
+# Dependencies - Include everything needed for runtime
+# node_modules/** would exclude all, but we need them!
+# So we'll be selective about what to exclude instead
+
+# Exclude only development dependencies
+node_modules/@types/**
+node_modules/@typescript-eslint/**
+node_modules/eslint/**
+node_modules/mocha/**
+node_modules/typescript/**
+node_modules/@vscode/vsce/**
+node_modules/@vscode/test-electron/**
+
+# System files
+.DS_Store
+Thumbs.db
+*.vsix
+*.zip
+*.tar.gz
+*.log
+npm-debug.log*
+
+# TypeScript build info
+*.tsbuildinfo

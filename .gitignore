@@ -1,0 +1,32 @@
+# Compiled output
+out/
+dist/
+*.vsix
+
+# Dependencies
+node_modules/
+
+# Environment variables (contains API keys!)
+.env
+
+# VS Code
+.vscode-test/
+.vscode/*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
