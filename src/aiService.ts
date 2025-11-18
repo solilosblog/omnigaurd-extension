@@ -1,25 +1,14 @@
 import axios, { AxiosError } from "axios";
 import * as vscode from "vscode";
 
-/**
- * Helper to get latest configuration from VS Code settings
- */
 function getVSCodeConfig() {
   const config = vscode.workspace.getConfiguration("aiDevAssistant");
-
   return {
-    // Backend base URL
     baseUrl: config.get<string>("baseUrl") || "http://localhost:8080/api",
-    // AI provider: "openai" or "gemini"
     provider: config.get<string>("provider") || "gemini",
-    maxTokens: config.get<number>("maxTokens") || 2000,
-    temperature: config.get<number>("temperature") || 0.7,
   };
 }
 
-/**
- * System prompt that defines the AI assistant's behavior
- */
 const SYSTEM_PROMPT = `You are an AI coding assistant integrated into VS Code. You help developers with:
 - Code review and suggestions
 - Bug fixing and debugging
@@ -32,53 +21,41 @@ When suggesting code changes:
 1. Provide clear explanations
 2. Show complete code blocks with proper syntax highlighting
 3. Explain the reasoning behind changes
-4. Suggest terminal commands only when necessary
 
-Keep responses concise but thorough. Format code using markdown code blocks with language identifiers.`;
+Keep responses concise but thorough.`;
 
-/**
- * Send a prompt to the LLM and return a response
- */
-/**
- * Send a prompt to the LLM and return a response
- */
 export async function askLLM(userPrompt: string): Promise<string> {
   const config = getVSCodeConfig();
 
   try {
-    // Combine system prompt with user prompt
-    const fullPrompt = `${SYSTEM_PROMPT}\n\nUser: ${userPrompt}`;
+    const endpoint = `${config.baseUrl}/ai-chat-gemini`;
 
-    // Determine which endpoint to use based on provider
-    const endpoint =  `${config.baseUrl}/ai-chat-gemini`;
-
-    console.log(`Calling endpoint: ${endpoint}`); // Debug log
-
-    // Call your Spring Boot backend with POST
     const response = await axios.post(
       endpoint,
-      { message: fullPrompt }, // Make sure this matches ChatRequest
       {
-        headers: {
-          "Content-Type": "application/json",
-        },
+        message: userPrompt,
+        systemPrompt: SYSTEM_PROMPT,
+        codeContext: null
+      },
+      {
+        headers: { "Content-Type": "application/json" },
         timeout: 60000,
       }
     );
 
-    const aiResponse = response.data;
-    if (!aiResponse) throw new Error("No response received from backend");
+    const data = response.data;
+    
+    if (data.tokens) {
+      console.log(`Tokens - Input: ${data.tokens.input}, Output: ${data.tokens.output}, Total: ${data.tokens.total}`);
+    }
 
-    return aiResponse.trim();
+    return data.content || data;
   } catch (error) {
-    console.error("Error calling backend:", error); // Debug log
+    console.error("Error calling backend:", error);
     return handleLLMError(error);
   }
 }
 
-/**
- * Handle LLM API errors gracefully
- */
 function handleLLMError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const err = error as AxiosError;
@@ -106,29 +83,19 @@ function handleLLMError(error: unknown): string {
   }`;
 }
 
-/**
- * Quick connectivity test
- */
 export async function testLLMConnection(): Promise<boolean> {
   try {
-    const reply = await askLLM(
-      'Hello, this is a test. Please reply with "OK".'
-    );
+    const reply = await askLLM('Hello, this is a test. Please reply with "OK".');
     return reply.includes("OK");
   } catch {
     return false;
   }
 }
 
-/**
- * Expose config for debugging
- */
 export function getConfigStatus() {
   const config = getVSCodeConfig();
   return {
     baseUrl: config.baseUrl,
     provider: config.provider,
-    maxTokens: config.maxTokens,
-    temperature: config.temperature,
   };
 }
