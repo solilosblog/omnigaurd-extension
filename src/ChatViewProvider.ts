@@ -78,6 +78,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         fullPrompt = this._buildContextualPrompt(userMessage, codeContext);
       }
 
+      console.log("fullPrompt", fullPrompt);
+      
+
       const response = await askLLM(fullPrompt);
 
       this._sendMessageToWebview({
@@ -129,7 +132,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         type: "basic",
       };
     }
-
+    console.log("analysis",analysis);
+    
     // Get current cursor position
     const position = editor.selection.active;
     const currentLine = position.line + 1;
