@@ -94,32 +94,39 @@ export class ASTParser {
   }
 
   private walkTree(node: any, code: string, analysis: FileAnalysis) {
-    if (node.type === "method_declaration" || node.type === "function_declaration") {
-      const funcMetadata = this.extractFunctionMetadata(node, code);
-      if (funcMetadata) {
-        analysis.functions.push(funcMetadata);
-      }
-    }
-
-    if (node.type === "class_declaration") {
-      const className = this.getNodeText(node.childForFieldName("name"), code);
-      if (className) {
-        analysis.classes.push(className);
-      }
-    }
-
-    if (node.type === "import_declaration" || node.type === "import_statement") {
-      const importText = this.getNodeText(node, code);
-      if (importText) {
-        analysis.imports.push(importText);
-      }
-    }
-
-    for (const child of node.children) {
-      this.walkTree(child, code, analysis);
+  // Capture package statement for Java
+  if (node.type === "package_declaration") {
+    const packageText = this.getNodeText(node, code);
+    if (packageText && !analysis.imports.includes(packageText)) {
+      analysis.imports.unshift(packageText); // Add package at the beginning
     }
   }
 
+  if (node.type === "method_declaration" || node.type === "function_declaration") {
+    const funcMetadata = this.extractFunctionMetadata(node, code);
+    if (funcMetadata) {
+      analysis.functions.push(funcMetadata);
+    }
+  }
+
+  if (node.type === "class_declaration") {
+    const className = this.getNodeText(node.childForFieldName("name"), code);
+    if (className) {
+      analysis.classes.push(className);
+    }
+  }
+
+  if (node.type === "import_declaration" || node.type === "import_statement") {
+    const importText = this.getNodeText(node, code);
+    if (importText) {
+      analysis.imports.push(importText);
+    }
+  }
+
+  for (const child of node.children) {
+    this.walkTree(child, code, analysis);
+  }
+}
   private extractFunctionMetadata(node: any, code: string): FunctionMetadata | null {
     const name = this.getNodeText(node.childForFieldName("name"), code);
     if (!name) {

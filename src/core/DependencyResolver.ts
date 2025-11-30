@@ -1,5 +1,6 @@
 import { FileAnalysis } from "../codeAnalysis/astParser";
 import { CodebaseIndex } from "./WorkspaceIndexer";
+import * as path from "path";
 
 export interface DependencyNode {
   file: string;
@@ -27,50 +28,203 @@ export class DependencyResolver {
   private index: CodebaseIndex;
   private dependencyMap: Map<string, Set<string>>;
   private reverseDependencyMap: Map<string, Set<string>>;
+  private filePathMap: Map<string, string>;
 
   constructor(index: CodebaseIndex) {
     this.index = index;
     this.dependencyMap = new Map();
     this.reverseDependencyMap = new Map();
+    this.filePathMap = new Map();
+    this.buildFilePathMap();
     this.buildDependencyMaps();
   }
 
+  private buildFilePathMap(): void {
+    console.log("🗺️ Building file path map for import resolution...");
+    
+    for (const [filePath, analysis] of this.index.files) {
+      const fileName = path.basename(filePath, path.extname(filePath));
+      const packagePath = this.extractPackagePath(filePath, analysis);
+      
+      this.filePathMap.set(fileName, filePath);
+      if (packagePath) {
+        this.filePathMap.set(packagePath, filePath);
+      }
+    }
+    
+    console.log(`✅ File path map built with ${this.filePathMap.size} entries`);
+  }
+
+  private extractPackagePath(filePath: string, analysis: FileAnalysis): string | null {
+    if (analysis.language === "java") {
+      for (const imp of analysis.imports) {
+        const match = imp.match(/package\s+([\w.]+);/);
+        if (match) {
+          const packageName = match[1];
+          const className = path.basename(filePath, ".java");
+          return `${packageName}.${className}`;
+        }
+      }
+    }
+    return null;
+  }
+
   private buildDependencyMaps(): void {
+    console.log("🔗 Building dependency maps...");
+    
+    let totalDependencies = 0;
+    
     for (const [filePath, analysis] of this.index.files) {
       const deps = new Set<string>();
       
+      console.log(`📄 Processing dependencies for: ${path.basename(filePath)}`);
+      console.log(`   Imports found: ${analysis.imports.length}`);
+      
       for (const imp of analysis.imports) {
-        const resolvedPath = this.resolveImport(imp, filePath);
-        if (resolvedPath) {
+        const resolvedPath = this.resolveImport(imp, filePath, analysis);
+        if (resolvedPath && resolvedPath !== filePath) {
           deps.add(resolvedPath);
+          totalDependencies++;
+          
+          console.log(`   ✓ Resolved: ${imp} -> ${path.basename(resolvedPath)}`);
           
           if (!this.reverseDependencyMap.has(resolvedPath)) {
             this.reverseDependencyMap.set(resolvedPath, new Set());
           }
           this.reverseDependencyMap.get(resolvedPath)!.add(filePath);
+        } else {
+          console.log(`   ✗ Could not resolve: ${imp}`);
         }
       }
       
       this.dependencyMap.set(filePath, deps);
     }
+    
+    console.log(`✅ Dependency maps built: ${totalDependencies} total dependencies`);
+    console.log(`📊 Files with dependencies: ${Array.from(this.dependencyMap.values()).filter(s => s.size > 0).length}/${this.dependencyMap.size}`);
   }
 
-  private resolveImport(importStatement: string, currentFile: string): string | null {
-    const importMatch = importStatement.match(/['"](.+?)['"]/);
+  private resolveImport(importStatement: string, currentFile: string, analysis: FileAnalysis): string | null {
+    if (analysis.language === "java") {
+      return this.resolveJavaImport(importStatement);
+    } else if (analysis.language === "typescript" || analysis.language === "javascript") {
+      return this.resolveTypeScriptImport(importStatement, currentFile);
+    } else if (analysis.language === "python") {
+      return this.resolvePythonImport(importStatement);
+    }
+    
+    return null;
+  }
+
+  private resolveJavaImport(importStatement: string): string | null {
+    const importMatch = importStatement.match(/import\s+([\w.]+);/);
+    if (!importMatch) {
+      return null;
+    }
+
+    const fullImport = importMatch[1];
+    const parts = fullImport.split('.');
+    const className = parts[parts.length - 1];
+    
+    console.log(`   🔍 Java import: ${fullImport} -> Looking for class: ${className}`);
+    
+    for (const [filePath, analysis] of this.index.files) {
+      if (analysis.language !== "java") continue;
+      
+      const fileClassName = path.basename(filePath, ".java");
+      
+      if (fileClassName === className) {
+        const filePackage = this.getJavaPackage(analysis);
+        if (filePackage && fullImport === `${filePackage}.${className}`) {
+          console.log(`   ✓✓ Exact match: ${filePath}`);
+          return filePath;
+        }
+        
+        if (!filePackage && parts.length === 1) {
+          console.log(`   ✓ Name match (no package): ${filePath}`);
+          return filePath;
+        }
+      }
+    }
+    
+    const possiblePath = this.filePathMap.get(className);
+    if (possiblePath) {
+      console.log(`   ✓ Found via filePathMap: ${possiblePath}`);
+      return possiblePath;
+    }
+    
+    const fullPath = this.filePathMap.get(fullImport);
+    if (fullPath) {
+      console.log(`   ✓ Found via full import path: ${fullPath}`);
+      return fullPath;
+    }
+    
+    return null;
+  }
+
+  private getJavaPackage(analysis: FileAnalysis): string | null {
+    for (const imp of analysis.imports) {
+      const match = imp.match(/package\s+([\w.]+);/);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
+  }
+
+  private resolveTypeScriptImport(importStatement: string, currentFile: string): string | null {
+    const importMatch = importStatement.match(/from\s+['"](.+?)['"]/);
     if (!importMatch) {
       return null;
     }
 
     const importPath = importMatch[1];
     
+    if (importPath.startsWith('.')) {
+      const currentDir = path.dirname(currentFile);
+      const resolvedPath = path.resolve(currentDir, importPath);
+      
+      for (const ext of ['.ts', '.tsx', '.js', '.jsx']) {
+        const fullPath = resolvedPath + ext;
+        if (this.index.files.has(fullPath)) {
+          return fullPath;
+        }
+      }
+      
+      const indexPath = path.join(resolvedPath, 'index.ts');
+      if (this.index.files.has(indexPath)) {
+        return indexPath;
+      }
+    }
+    
+    const fileName = path.basename(importPath);
     for (const [filePath] of this.index.files) {
-      if (filePath.includes(importPath) || filePath.endsWith(importPath + ".ts") || 
-          filePath.endsWith(importPath + ".js") || filePath.endsWith(importPath + ".java") ||
-          filePath.endsWith(importPath + ".py")) {
+      if (path.basename(filePath, path.extname(filePath)) === fileName) {
         return filePath;
       }
     }
+    
+    return null;
+  }
 
+  private resolvePythonImport(importStatement: string): string | null {
+    const fromMatch = importStatement.match(/from\s+([\w.]+)\s+import/);
+    const importMatch = importStatement.match(/import\s+([\w.]+)/);
+    
+    const moduleName = fromMatch ? fromMatch[1] : importMatch ? importMatch[1] : null;
+    if (!moduleName) {
+      return null;
+    }
+
+    const parts = moduleName.split('.');
+    const fileName = parts[parts.length - 1];
+    
+    for (const [filePath] of this.index.files) {
+      if (path.basename(filePath, '.py') === fileName) {
+        return filePath;
+      }
+    }
+    
     return null;
   }
 

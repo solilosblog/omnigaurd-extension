@@ -53,7 +53,7 @@ export class ContextBuilder {
       batchNumber: batch.id,
       totalBatches: batch.dependencies.requiredBy.length + batch.dependencies.requires.length,
       graph: {
-        mermaid: this.graphBuilder.generateMermaid(graph),
+        mermaid: this.graphBuilder.generateMermaidWithClusters(graph),
         tree: this.graphBuilder.generateTree(graph),
         metadata: this.graphBuilder.generateJSON(graph),
       },

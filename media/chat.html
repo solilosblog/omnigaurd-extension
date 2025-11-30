@@ -40,6 +40,48 @@
         .header p {
             font-size: 12px;
             color: var(--vscode-descriptionForeground);
+            margin-bottom: 12px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            background-color: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--vscode-button-border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .action-btn:hover {
+            background-color: var(--vscode-button-secondaryHoverBackground);
+        }
+
+        .action-btn.primary {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+
+        .action-btn.primary:hover {
+            background-color: var(--vscode-button-hoverBackground);
+        }
+
+        .mode-indicator {
+            margin-top: 8px;
+            padding: 6px 10px;
+            background-color: var(--vscode-inputOption-activeBackground);
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-block;
         }
 
         .chat-container {
@@ -237,6 +279,25 @@
     <div class="header">
         <h1>🤖 AI Dev Assistant</h1>
         <p>Ask me about your code, debugging, or architecture.</p>
+        
+        <div class="action-buttons">
+            <button class="action-btn primary" onclick="indexWorkspace()">
+                📊 Index Workspace
+            </button>
+            <button class="action-btn" onclick="viewGraph()">
+                🔗 View Graph
+            </button>
+            <button class="action-btn" onclick="toggleContextMode()">
+                ⚙️ Context Mode
+            </button>
+            <button class="action-btn" onclick="generateTest()">
+                🧪 Generate Test
+            </button>
+        </div>
+        
+        <div class="mode-indicator" id="modeIndicator">
+            📄 Mode: Single File
+        </div>
     </div>
 
     <div class="chat-container" id="chatContainer">
@@ -277,118 +338,154 @@
     </div>
 
     <script>
-        const vscode = acquireVsCodeApi();
-        const chatContainer = document.getElementById('chatContainer');
-        const emptyState = document.getElementById('emptyState');
-        const thinking = document.getElementById('thinking');
-        const userInput = document.getElementById('userInput');
-        const sendBtn = document.getElementById('sendBtn');
+    const vscode = acquireVsCodeApi();
+    const chatContainer = document.getElementById('chatContainer');
+    const emptyState = document.getElementById('emptyState');
+    const thinking = document.getElementById('thinking');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const modeIndicator = document.getElementById('modeIndicator');
 
-        let messageCount = 0;
+    let messageCount = 0;
 
-        function autoResize(textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-        }
+    function indexWorkspace() {
+        vscode.postMessage({ type: 'indexWorkspace' });
+    }
 
-        function handleKeyPress(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-            }
-        }
+    function viewGraph() {
+        vscode.postMessage({ type: 'viewGraph' });
+    }
 
-        function sendSuggestion(text) {
-            userInput.value = text;
+    function toggleContextMode() {
+        vscode.postMessage({ type: 'toggleContextMode' });
+    }
+
+    function generateTest() {
+        vscode.postMessage({ type: 'generateTest' });
+    }
+
+    function autoResize(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    }
+
+    function handleKeyPress(event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
             sendMessage();
         }
+    }
 
-        function sendMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
+    function sendSuggestion(text) {
+        userInput.value = text;
+        sendMessage();
+    }
 
-            if (emptyState.style.display !== 'none') {
-                emptyState.style.display = 'none';
-            }
+    function sendMessage() {
+        const message = userInput.value.trim();
+        if (!message) return;
 
-            addMessage('user', message);
-            userInput.value = '';
-            userInput.style.height = 'auto';
-            sendBtn.disabled = true;
-
-            vscode.postMessage({
-                type: 'sendMessage',
-                text: message
-            });
+        if (emptyState.style.display !== 'none') {
+            emptyState.style.display = 'none';
         }
 
-        function addMessage(role, text) {
-            messageCount++;
-            
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
-            
-            const bubbleDiv = document.createElement('div');
-            bubbleDiv.className = 'message-bubble';
-            
-            if (role === 'assistant') {
-                bubbleDiv.innerHTML = formatMessage(text);
-            } else {
-                bubbleDiv.textContent = text;
-            }
-            
-            messageDiv.appendChild(bubbleDiv);
-            chatContainer.insertBefore(messageDiv, thinking);
-            
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+        addMessage('user', message);
+        userInput.value = '';
+        userInput.style.height = 'auto';
+        sendBtn.disabled = true;
 
-        function formatMessage(text) {
-            text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-                return `<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code.trim())}</code></pre>`;
-            });
-            
-            text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-            
-            text = text.replace(/\n/g, '<br>');
-            
-            return text;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        window.addEventListener('message', event => {
-            const message = event.data;
-
-            switch (message.type) {
-                case 'assistantMessage':
-                    addMessage('assistant', message.text);
-                    sendBtn.disabled = false;
-                    userInput.focus();
-                    break;
-
-                case 'assistantThinking':
-                    if (message.thinking) {
-                        thinking.classList.add('active');
-                    } else {
-                        thinking.classList.remove('active');
-                    }
-                    break;
-
-                case 'error':
-                    addMessage('assistant', '❌ Error: ' + message.text);
-                    sendBtn.disabled = false;
-                    break;
-            }
-
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+        vscode.postMessage({
+            type: 'sendMessage',
+            text: message
         });
+    }
 
-        userInput.focus();
-    </script>
+    function addMessage(role, text) {
+        messageCount++;
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${role}`;
+        
+        const bubbleDiv = document.createElement('div');
+        bubbleDiv.className = 'message-bubble';
+        
+        if (role === 'assistant') {
+            bubbleDiv.innerHTML = formatMessage(text);
+        } else {
+            bubbleDiv.textContent = text;
+        }
+        
+        messageDiv.appendChild(bubbleDiv);
+        chatContainer.insertBefore(messageDiv, thinking);
+        
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function formatMessage(text) {
+        // Match code blocks with optional language (```language\ncode```)
+        text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            return `<pre><code class="language-${lang || 'plaintext'}">${escapeHtml(code.trim())}</code></pre>`;
+        });
+        
+        // Match inline code (`code`)
+        text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+        
+        // Replace newlines with <br> tags
+        text = text.replace(/\n/g, '<br>');
+        
+        return text;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    window.addEventListener('message', event => {
+        const message = event.data;
+
+        switch (message.type) {
+            case 'assistantMessage':
+                addMessage('assistant', message.text);
+                sendBtn.disabled = false;
+                userInput.focus();
+                break;
+
+            case 'assistantThinking':
+                if (message.thinking) {
+                    thinking.classList.add('active');
+                } else {
+                    thinking.classList.remove('active');
+                }
+                break;
+
+            case 'updateMode':
+                const modeIcons = {
+                    'single': '📄',
+                    'smart': '📁',
+                    'workspace': '🌍',
+                    'custom': '🎯'
+                };
+                const modeNames = {
+                    'single': 'Single File',
+                    'smart': 'Smart Mode',
+                    'workspace': 'Workspace',
+                    'custom': 'Custom'
+                };
+                modeIndicator.textContent = `${modeIcons[message.mode] || '📄'} Mode: ${modeNames[message.mode] || 'Single File'}`;
+                break;
+
+            case 'error':
+                addMessage('assistant', '❌ Error: ' + message.text);
+                sendBtn.disabled = false;
+                break;
+        }
+
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    });
+
+    userInput.focus();
+</script>
 </body>
 </html>

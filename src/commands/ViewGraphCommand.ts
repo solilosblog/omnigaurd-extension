@@ -29,7 +29,7 @@ export class ViewGraphCommand {
     const dependencyResolver = new DependencyResolver(index);
     const graphBuilder = new DependencyGraphBuilder(index, dependencyResolver);
     const graph = graphBuilder.buildGraph();
-    const mermaidDiagram = graphBuilder.generateMermaid(graph);
+    const mermaidDiagram = graphBuilder.generateMermaidWithClusters(graph);
 
     this.graphViewer.show(graph, mermaidDiagram);
   }

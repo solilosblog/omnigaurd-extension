@@ -49,12 +49,60 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message) => {
       await this._handleWebviewMessage(message);
     });
+
+    this._updateContextMode();
   }
 
   private async _handleWebviewMessage(message: any): Promise<void> {
+    console.log("📨 Received message from webview:", message.type);
+
     switch (message.type) {
       case "sendMessage":
         await this._handleChatMessage(message.text);
+        break;
+
+      case "indexWorkspace":
+        console.log("🔧 Index Workspace button clicked");
+        try {
+          await vscode.commands.executeCommand("aiDevAssistant.indexCodebase");
+          this._sendMessageToWebview({
+            type: "assistantMessage",
+            text: "✅ Workspace indexing started! Check the progress notification.",
+          });
+        } catch (error: any) {
+          this._sendMessageToWebview({
+            type: "assistantMessage",
+            text: `❌ Failed to start indexing: ${error.message}`,
+          });
+        }
+        break;
+
+      case "viewGraph":
+        console.log("🔧 View Graph button clicked");
+        try {
+          await vscode.commands.executeCommand("aiDevAssistant.viewGraph");
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Failed to open graph: ${error.message}`);
+        }
+        break;
+
+      case "toggleContextMode":
+        console.log("🔧 Toggle Context Mode button clicked");
+        try {
+          await vscode.commands.executeCommand("aiDevAssistant.toggleContextMode");
+          setTimeout(() => this._updateContextMode(), 500);
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Failed to toggle context mode: ${error.message}`);
+        }
+        break;
+
+      case "generateTest":
+        console.log("🔧 Generate Test button clicked");
+        try {
+          await vscode.commands.executeCommand("aiDevAssistant.generateTest");
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Failed to generate test: ${error.message}`);
+        }
         break;
 
       case "nextBatch":
@@ -78,133 +126,136 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         break;
 
       default:
-        console.warn("Unknown message type:", message.type);
+        console.warn("⚠️ Unknown message type:", message.type);
     }
+  }
+
+  private _updateContextMode(): void {
+    console.log("🔄 Updating context mode indicator");
+    const config = vscode.workspace.getConfiguration("aiDevAssistant");
+    const mode = config.get<string>("contextMode.default") || "smart";
+    
+    console.log("📊 Current mode:", mode);
+    
+    this._sendMessageToWebview({
+      type: "updateMode",
+      mode: mode,
+    });
   }
 
   private async _handleChatMessage(userMessage: string): Promise<void> {
-  try {
-    this._sendMessageToWebview({
-      type: "assistantThinking",
-      thinking: true,
-    });
+    console.log("💬 Handling chat message:", userMessage.substring(0, 50) + "...");
+    
+    try {
+      this._sendMessageToWebview({
+        type: "assistantThinking",
+        thinking: true,
+      });
 
-    const config = vscode.workspace.getConfiguration("aiDevAssistant");
-    const contextMode = config.get<string>("contextMode.default") || "smart";
+      const config = vscode.workspace.getConfiguration("aiDevAssistant");
+      const contextMode = config.get<string>("contextMode.default") || "smart";
 
-    if (contextMode === "workspace") {
-      const index = this.cacheManager.loadIndex();
-      
-      if (!index || index.files.size === 0) {
-        this._sendMessageToWebview({
-          type: "assistantThinking",
-          thinking: false,
-        });
+      console.log("📊 Context mode:", contextMode);
 
-        this._sendMessageToWebview({
-          type: "assistantMessage",
-          text: "⚠️ Workspace not indexed. Indexing now...\n\nPlease wait..."
-        });
+      if (contextMode === "workspace") {
+        const index = this.cacheManager.loadIndex();
+        
+        if (!index || index.files.size === 0) {
+          this._sendMessageToWebview({
+            type: "assistantThinking",
+            thinking: false,
+          });
+
+          this._sendMessageToWebview({
+            type: "assistantMessage",
+            text: "⚠️ Workspace not indexed. Click the '📊 Index Workspace' button above to get started!",
+          });
+          return;
+        }
 
         try {
-          await vscode.commands.executeCommand("aiDevAssistant.indexCodebase");
+          const codebaseContext = await this._getWorkspaceContext();
+          
+          if (!codebaseContext) {
+            throw new Error("Failed to build workspace context");
+          }
+
+          console.log("✅ Workspace context built successfully");
+
+          const response = await askLLM(userMessage, codebaseContext);
+
+          this._sendMessageToWebview({
+            type: "assistantThinking",
+            thinking: false,
+          });
+
+          this._sendMessageToWebview({
+            type: "assistantMessage",
+            text: `📊 **Workspace Mode** (${index.files.size} files indexed)\n\n${response}`,
+          });
+          return;
+        } catch (error: any) {
+          console.error("❌ Workspace context error:", error);
           
           this._sendMessageToWebview({
-            type: "assistantMessage",
-            text: "✅ Workspace indexed successfully! Please ask your question again."
+            type: "assistantThinking",
+            thinking: false,
           });
-        } catch (error: any) {
+
           this._sendMessageToWebview({
             type: "assistantMessage",
-            text: `❌ Indexing failed: ${error.message}\n\nPlease try:\n1. Check console for errors\n2. Switch to Smart Mode\n3. Try again`
+            text: `❌ Error using workspace context: ${error.message}\n\nFalling back to single-file mode...`,
           });
         }
-        return;
       }
 
-      try {
-        const codebaseContext = await this._getWorkspaceContext();
-        
-        if (!codebaseContext) {
-          throw new Error("Failed to build workspace context");
-        }
-
-        console.log("Sending workspace context:", {
-          mode: codebaseContext.mode,
-          filesCount: codebaseContext.files.length,
-          batch: `${codebaseContext.batchNumber}/${codebaseContext.totalBatches}`
-        });
-
-        const response = await askLLM(userMessage, codebaseContext);
-
-        this._sendMessageToWebview({
-          type: "assistantThinking",
-          thinking: false,
-        });
-
-        this._sendMessageToWebview({
-          type: "assistantMessage",
-          text: `📊 **Workspace Context Active** (${index.files.size} files, Batch ${codebaseContext.batchNumber})\n\n${response}`,
-        });
-        return;
-      } catch (error: any) {
-        console.error("Workspace context error:", error);
-        
-        this._sendMessageToWebview({
-          type: "assistantThinking",
-          thinking: false,
-        });
-
-        this._sendMessageToWebview({
-          type: "assistantMessage",
-          text: `❌ Error using workspace context: ${error.message}\n\nFalling back to single-file mode...`
-        });
+      const codeContext = await this._getEnhancedCodeContext();
+      let fullPrompt = userMessage;
+      
+      if (codeContext) {
+        fullPrompt = this._buildContextualPrompt(userMessage, codeContext);
       }
+
+      const response = await askLLM(fullPrompt);
+
+      this._sendMessageToWebview({
+        type: "assistantThinking",
+        thinking: false,
+      });
+
+      this._sendMessageToWebview({
+        type: "assistantMessage",
+        text: response,
+      });
+    } catch (error: any) {
+      console.error("❌ Chat error:", error);
+      
+      this._sendMessageToWebview({
+        type: "assistantThinking",
+        thinking: false,
+      });
+
+      this._sendMessageToWebview({
+        type: "assistantMessage",
+        text: `❌ Error: ${error.message || "Failed to get response from AI"}`,
+      });
+
+      vscode.window.showErrorMessage(`AI Dev Assistant: ${error.message}`);
     }
-
-    const codeContext = await this._getEnhancedCodeContext();
-    let fullPrompt = userMessage;
-    
-    if (codeContext) {
-      fullPrompt = this._buildContextualPrompt(userMessage, codeContext);
-    }
-
-    const response = await askLLM(fullPrompt);
-
-    this._sendMessageToWebview({
-      type: "assistantThinking",
-      thinking: false,
-    });
-
-    this._sendMessageToWebview({
-      type: "assistantMessage",
-      text: response,
-    });
-  } catch (error: any) {
-    console.error("Chat error:", error);
-    
-    this._sendMessageToWebview({
-      type: "assistantThinking",
-      thinking: false,
-    });
-
-    this._sendMessageToWebview({
-      type: "assistantMessage",
-      text: `❌ Error: ${error.message || "Failed to get response from AI"}`,
-    });
-
-    vscode.window.showErrorMessage(`AI Dev Assistant: ${error.message}`);
   }
 
-}
-
   private async _getWorkspaceContext(): Promise<any> {
+    console.log("🔍 Building workspace context...");
+    
     const index = this.cacheManager.loadIndex();
 
     if (!index) {
+      console.warn("⚠️ No index found");
       vscode.window.showWarningMessage("Workspace not indexed. Please index first.");
       return null;
     }
+
+    console.log(`📊 Workspace Index: ${index.files.size} files loaded`);
 
     if (!this.batchManager) {
       const dependencyResolver = new DependencyResolver(index);
@@ -215,6 +266,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         prioritizeByComplexity: false,
       });
 
+      console.log(`📦 Created ${batches.length} batches`);
+
       const graphBuilder = new DependencyGraphBuilder(index, dependencyResolver);
       this.contextBuilder = new ContextBuilder(graphBuilder);
 
@@ -223,8 +276,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     const currentBatch = this.batchManager.getBatch(this.currentBatchId);
     if (!currentBatch) {
+      console.log("❌ No batch found");
       return null;
     }
+
+    console.log(`📋 Processing Batch ${this.currentBatchId}: ${currentBatch.files.length} files`);
 
     const dependencyResolver = new DependencyResolver(index);
     const graphBuilder = new DependencyGraphBuilder(index, dependencyResolver);
@@ -235,6 +291,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       graph,
       this.conversationContext
     );
+
+    console.log(`✅ Context built with ${context.files.length} files`);
 
     return context;
   }
@@ -409,27 +467,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _sendMessageToWebview(message: any): void {
-    this._view?.webview.postMessage(message);
+    if (this._view) {
+      console.log("📤 Sending to webview:", message.type);
+      this._view.webview.postMessage(message);
+    } else {
+      console.warn("⚠️ No webview available to send message");
+    }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
-  const htmlPath = vscode.Uri.joinPath(
-    this._extensionUri,
-    "media",
-    "chat.html"
-  );
+    const htmlPath = vscode.Uri.joinPath(
+      this._extensionUri,
+      "media",
+      "chat.html"
+    );
 
-  try {
-    const htmlContent = fs.readFileSync(htmlPath.fsPath, "utf8");
-    return htmlContent;
-  } catch (error) {
-    console.error("Failed to load chat.html:", error);
-    return this._getInlineHtml();
+    try {
+      const htmlContent = fs.readFileSync(htmlPath.fsPath, "utf8");
+      return htmlContent;
+    } catch (error) {
+      console.error("Failed to load chat.html:", error);
+      return this._getInlineHtml();
+    }
   }
-}
 
-private _getInlineHtml(): string {
-  return `<!DOCTYPE html>
+  private _getInlineHtml(): string {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -453,5 +516,5 @@ private _getInlineHtml(): string {
     <p style="margin-top: 20px; font-size: 12px;">If this persists, check the console for errors.</p>
 </body>
 </html>`;
-}
+  }
 }
