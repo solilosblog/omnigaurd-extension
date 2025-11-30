@@ -1,7 +1,7 @@
 {
   "name": "ai-dev-assistant",
   "displayName": "AI Dev Assistant",
-  "description": "AI-powered coding assistant similar to Claude Code and GitHub Copilot Chat",
+  "description": "AI-powered coding assistant with workspace-wide context understanding and dependency analysis",
   "version": "1.0.0",
   "publisher": "niraj-chordia",
   "icon": "media/icon.jpg",
@@ -22,11 +22,16 @@
     "code",
     "llm",
     "openai",
-    "gpt"
+    "gemini",
+    "gpt",
+    "codebase-analysis",
+    "dependency-graph",
+    "test-generation"
   ],
   "activationEvents": [
     "onView:aiDevAssistant.chat",
-    "onCommand:aiDevAssistant.openChat"
+    "onCommand:aiDevAssistant.openChat",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -53,26 +58,123 @@
     "commands": [
       {
         "command": "aiDevAssistant.openChat",
-        "title": "AI Dev Assistant: Open Chat",
-        "category": "AI Dev Assistant"
+        "title": "Open Chat",
+        "category": "AI Dev Assistant",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "aiDevAssistant.indexCodebase",
+        "title": "Index Workspace",
+        "category": "AI Dev Assistant",
+        "icon": "$(database)"
+      },
+      {
+        "command": "aiDevAssistant.viewGraph",
+        "title": "View Dependency Graph",
+        "category": "AI Dev Assistant",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "aiDevAssistant.toggleContextMode",
+        "title": "Toggle Context Mode",
+        "category": "AI Dev Assistant",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "aiDevAssistant.showIndexStatus",
+        "title": "Show Index Status",
+        "category": "AI Dev Assistant",
+        "icon": "$(info)"
+      },
+      {
+        "command": "aiDevAssistant.generateTest",
+        "title": "Generate Unit Test",
+        "category": "AI Dev Assistant",
+        "icon": "$(beaker)"
       },
       {
         "command": "aiDevAssistant.showDiff",
-        "title": "AI Dev Assistant: Show Diff View"
+        "title": "Show Diff View",
+        "category": "AI Dev Assistant"
       },
       {
         "command": "aiDevAssistant.runCommand",
-        "title": "AI Dev Assistant: Run Terminal Command"
+        "title": "Run Terminal Command",
+        "category": "AI Dev Assistant"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "aiDevAssistant.generateTest",
+          "when": "editorTextFocus",
+          "group": "aiDevAssistant@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "aiDevAssistant.openChat"
+        },
+        {
+          "command": "aiDevAssistant.indexCodebase"
+        },
+        {
+          "command": "aiDevAssistant.viewGraph"
+        },
+        {
+          "command": "aiDevAssistant.toggleContextMode"
+        },
+        {
+          "command": "aiDevAssistant.showIndexStatus"
+        },
+        {
+          "command": "aiDevAssistant.generateTest",
+          "when": "editorTextFocus"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "aiDevAssistant.openChat",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "aiDevAssistant.generateTest",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "aiDevAssistant.toggleContextMode",
+        "key": "ctrl+shift+alt+c",
+        "mac": "cmd+shift+alt+c"
       }
     ],
     "configuration": {
       "title": "AI Dev Assistant",
       "properties": {
+        "aiDevAssistant.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:8080/api",
+          "description": "Backend API base URL",
+          "order": 1
+        },
+        "aiDevAssistant.provider": {
+          "type": "string",
+          "default": "gemini",
+          "enum": [
+            "gemini",
+            "openai"
+          ],
+          "description": "AI provider to use",
+          "order": 2
+        },
         "aiDevAssistant.apiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API Key (Alternative to .env file)",
-          "order": 1
+          "description": "API Key (if not using backend)",
+          "order": 3
         },
         "aiDevAssistant.model": {
           "type": "string",
@@ -80,16 +182,17 @@
           "enum": [
             "gpt-4",
             "gpt-4-turbo",
-            "gpt-3.5-turbo"
+            "gpt-3.5-turbo",
+            "gemini-pro"
           ],
-          "description": "OpenAI model to use",
-          "order": 2
+          "description": "AI model to use",
+          "order": 4
         },
         "aiDevAssistant.maxTokens": {
           "type": "number",
           "default": 2000,
           "description": "Maximum tokens in AI response",
-          "order": 3
+          "order": 5
         },
         "aiDevAssistant.temperature": {
           "type": "number",
@@ -97,7 +200,185 @@
           "minimum": 0,
           "maximum": 2,
           "description": "Creativity level (0 = focused, 2 = creative)",
-          "order": 4
+          "order": 6
+        },
+        "aiDevAssistant.contextMode.default": {
+          "type": "string",
+          "default": "smart",
+          "enum": [
+            "single",
+            "smart",
+            "workspace",
+            "custom"
+          ],
+          "enumDescriptions": [
+            "Current file only",
+            "Current file + dependencies",
+            "Full workspace in batches",
+            "Custom file selection"
+          ],
+          "description": "Default context mode for AI queries",
+          "order": 7
+        },
+        "aiDevAssistant.indexing.autoIndexOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically index workspace when opening a project",
+          "order": 8
+        },
+        "aiDevAssistant.indexing.includeTiers": {
+          "type": "array",
+          "default": [
+            "production",
+            "tests",
+            "config"
+          ],
+          "items": {
+            "type": "string",
+            "enum": [
+              "production",
+              "tests",
+              "config",
+              "documentation"
+            ]
+          },
+          "description": "File tiers to include in indexing",
+          "order": 9
+        },
+        "aiDevAssistant.indexing.customInclude": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Custom glob patterns to include (e.g., 'src/**/*.ts')",
+          "order": 10
+        },
+        "aiDevAssistant.indexing.customExclude": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Custom glob patterns to exclude (e.g., '**/*.generated.ts')",
+          "order": 11
+        },
+        "aiDevAssistant.indexing.maxFilesPerBatch": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 100,
+          "description": "Maximum files per batch for workspace analysis",
+          "order": 12
+        },
+        "aiDevAssistant.indexing.respectGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Respect .gitignore patterns during indexing",
+          "order": 13
+        },
+        "aiDevAssistant.graph.enableViewer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable interactive dependency graph viewer",
+          "order": 14
+        },
+        "aiDevAssistant.graph.defaultLayout": {
+          "type": "string",
+          "default": "hierarchical",
+          "enum": [
+            "hierarchical",
+            "force-directed",
+            "circular"
+          ],
+          "description": "Default graph layout algorithm",
+          "order": 15
+        },
+        "aiDevAssistant.graph.colorScheme": {
+          "type": "string",
+          "default": "layer-based",
+          "enum": [
+            "layer-based",
+            "type-based",
+            "complexity-based"
+          ],
+          "description": "Graph node coloring scheme",
+          "order": 16
+        },
+        "aiDevAssistant.graph.showMetrics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show complexity and impact metrics in graph",
+          "order": 17
+        },
+        "aiDevAssistant.languages.priority": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "java",
+            "typescript",
+            "javascript",
+            "python"
+          ],
+          "description": "Language prioritization for multi-language projects",
+          "order": 18
+        },
+        "aiDevAssistant.languages.indexAll": {
+          "type": "boolean",
+          "default": true,
+          "description": "Index all supported languages or only priority language",
+          "order": 19
+        },
+        "aiDevAssistant.performance.parallelProcessing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable parallel file processing during indexing",
+          "order": 20
+        },
+        "aiDevAssistant.performance.maxParallelFiles": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum files to process in parallel",
+          "order": 21
+        },
+        "aiDevAssistant.performance.cacheEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable caching of indexed data",
+          "order": 22
+        },
+        "aiDevAssistant.performance.cacheLocation": {
+          "type": "string",
+          "default": "workspace",
+          "enum": [
+            "workspace",
+            "global"
+          ],
+          "description": "Cache storage location",
+          "order": 23
+        },
+        "aiDevAssistant.errorHandling.retryAttempts": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Number of retry attempts for failed operations",
+          "order": 24
+        },
+        "aiDevAssistant.errorHandling.partialParsing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable partial parsing for files with syntax errors",
+          "order": 25
+        },
+        "aiDevAssistant.errorHandling.showErrorSummary": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show detailed error summary after indexing",
+          "order": 26
         }
       }
     }
@@ -109,7 +390,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "package": "vsce package"
+    "package": "vsce package",
+    "clean": "rimraf out"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
@@ -123,6 +405,7 @@
     "eslint": "^8.56.0",
     "glob": "^10.3.10",
     "mocha": "^10.2.0",
+    "rimraf": "^5.0.5",
     "typescript": "^5.3.3"
   },
   "dependencies": {
@@ -139,5 +422,9 @@
     "type": "git",
     "url": "https://github.com/yourusername/ai-dev-assistant.git"
   },
+  "bugs": {
+    "url": "https://github.com/yourusername/ai-dev-assistant/issues"
+  },
+  "homepage": "https://github.com/yourusername/ai-dev-assistant#readme",
   "license": "MIT"
 }

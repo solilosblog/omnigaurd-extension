@@ -1,61 +1,104 @@
 import * as vscode from "vscode";
 import { ChatViewProvider } from "./ChatViewProvider";
-import { CodebaseIndexer } from "./codeAnalysis/codebaseIndexer";
+import { ASTParser } from "./codeAnalysis/astParser";
+import { FileFilter } from "./utils/FileFilter";
+import { ErrorHandler } from "./utils/ErrorHandler";
+import { CacheManager } from "./utils/CacheManager";
+import { WorkspaceIndexer } from "./core/WorkspaceIndexer";
+import { StatusBarManager } from "./ui/StatusBarManager";
+import { ProgressReporter } from "./ui/ProgressReporter";
+import { GraphViewer } from "./ui/GraphViewer";
+import { IndexCommand } from "./commands/IndexCommand";
+import { ViewGraphCommand } from "./commands/ViewGraphCommand";
+import { ToggleContextModeCommand } from "./commands/ToggleContextModeCommand";
 import { extractCurrentFunctionMetadata } from "./codeAnalysis/metadataExtractor";
 import { askLLM } from "./aiService";
-
 export function activate(context: vscode.ExtensionContext) {
   console.log("AI Dev Assistant activated");
 
-  // Initialize Chat Webview Provider
-  const chatProvider = new ChatViewProvider(context.extensionUri, true);
+  const cacheManager = new CacheManager(context);
+  const astParser = new ASTParser();
+  const fileFilter = new FileFilter();
+  const errorHandler = new ErrorHandler();
+  const statusBar = new StatusBarManager();
+  const progressReporter = new ProgressReporter();
+  const graphViewer = new GraphViewer(context.extensionUri);
+
+  const workspaceIndexer = new WorkspaceIndexer(
+    astParser,
+    fileFilter,
+    errorHandler,
+    cacheManager
+  );
+
+  const chatProvider = new ChatViewProvider(context.extensionUri, true, cacheManager);
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      "aiDevAssistant.chat",
-      chatProvider,
-      {
-        webviewOptions: { retainContextWhenHidden: true },
-      }
-    )
+    vscode.window.registerWebviewViewProvider("aiDevAssistant.chat", chatProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
   );
 
-  // Register Command: Index Codebase
-  const indexCommand = vscode.commands.registerCommand(
-    "aiDevAssistant.indexCodebase",
-    async () => {
-      const indexer = new CodebaseIndexer();
+  const indexCommand = new IndexCommand(workspaceIndexer, statusBar, progressReporter);
+  const viewGraphCommand = new ViewGraphCommand(graphViewer, cacheManager);
+  const toggleContextCommand = new ToggleContextModeCommand();
 
-      if (!vscode.workspace.workspaceFolders) {
-        vscode.window.showErrorMessage("Open a folder or workspace first.");
-        return;
-      }
-
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Indexing codebase...",
-          cancellable: false,
-        },
-        async () => {
-          try {
-            const index = await indexer.indexWorkspace();
-            vscode.window.showInformationMessage(
-              `Indexed ${index.totalFunctions} functions across ${index.files.size} files.`
-            );
-          } catch (err) {
-            vscode.window.showErrorMessage("Failed to index workspace.");
-            console.error(err);
-          }
+  // Auto-index on activation if enabled
+  const config = vscode.workspace.getConfiguration("aiDevAssistant");
+  const autoIndex = config.get<boolean>("indexing.autoIndexOnOpen");
+  
+  if (autoIndex && vscode.workspace.workspaceFolders) {
+    const cachedIndex = cacheManager.loadIndex();
+    if (!cachedIndex) {
+      vscode.window.showInformationMessage(
+        "AI Dev Assistant: Indexing workspace in background...",
+        "View Progress"
+      ).then(selection => {
+        if (selection === "View Progress") {
+          indexCommand.execute();
         }
-      );
+      });
+      
+      indexCommand.execute();
+    } else {
+      statusBar.setStatus("ready", cachedIndex.files.size);
     }
+  }
+
+  // Register all commands...
+  context.subscriptions.push(
+    vscode.commands.registerCommand("aiDevAssistant.indexCodebase", async () => {
+      await indexCommand.execute();
+    })
   );
 
-  // 🔥 NEW: Generate Unit Test Command
-  const generateTestCommand = vscode.commands.registerCommand(
-    "aiDevAssistant.generateTest",
-    async () => {
+  context.subscriptions.push(
+    vscode.commands.registerCommand("aiDevAssistant.viewGraph", async () => {
+      await viewGraphCommand.execute();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("aiDevAssistant.toggleContextMode", async () => {
+      await toggleContextCommand.execute();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("aiDevAssistant.showIndexStatus", async () => {
+      const index = cacheManager.loadIndex();
+      if (index) {
+        vscode.window.showInformationMessage(
+          `Indexed: ${index.files.size} files, ${index.totalFunctions} functions, ${index.totalClasses} classes`
+        );
+      } else {
+        vscode.window.showWarningMessage("Workspace not indexed");
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("aiDevAssistant.generateTest", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showErrorMessage("No active editor");
@@ -70,7 +113,6 @@ export function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
-            // Extract metadata using Tree-sitter
             const metadata = await extractCurrentFunctionMetadata();
 
             if (!metadata || !metadata.function) {
@@ -83,7 +125,6 @@ export function activate(context: vscode.ExtensionContext) {
             const func = metadata.function;
             const analysis = metadata.fileAnalysis;
 
-            // Build smart prompt with AST context
             const testPrompt = `
 Generate a comprehensive unit test for the following function:
 
@@ -128,13 +169,9 @@ Generate ONLY the test code, no explanations.
 
             const testCode = await askLLM(testPrompt);
 
-            // Create new test file
             const testFileName = getTestFileName(metadata.fileName, analysis.language);
             const testUri = vscode.Uri.file(
-              editor.document.uri.fsPath.replace(
-                metadata.fileName,
-                testFileName
-              )
+              editor.document.uri.fsPath.replace(metadata.fileName, testFileName)
             );
 
             const edit = new vscode.WorkspaceEdit();
@@ -146,9 +183,7 @@ Generate ONLY the test code, no explanations.
             if (success) {
               const doc = await vscode.workspace.openTextDocument(testUri);
               await vscode.window.showTextDocument(doc);
-              vscode.window.showInformationMessage(
-                `✅ Generated test for ${func.name}()`
-              );
+              vscode.window.showInformationMessage(`✅ Generated test for ${func.name}()`);
             } else {
               vscode.window.showErrorMessage("Failed to create test file");
             }
@@ -158,10 +193,17 @@ Generate ONLY the test code, no explanations.
           }
         }
       );
-    }
+    })
   );
 
-  context.subscriptions.push(indexCommand, generateTestCommand);
+  const watcher = vscode.workspace.createFileSystemWatcher("**/*.{java,ts,js,py}");
+
+  watcher.onDidChange(async (uri) => {
+    await workspaceIndexer.updateFile(uri);
+    statusBar.setStatus("ready");
+  });
+
+  context.subscriptions.push(watcher, statusBar, graphViewer);
 }
 
 function extractFunctionCode(
@@ -178,7 +220,7 @@ function extractFunctionCode(
 
 function getTestFileName(fileName: string, language: string): string {
   const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
-  
+
   switch (language) {
     case "java":
       return `${nameWithoutExt}Test.java`;

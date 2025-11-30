@@ -24,35 +24,71 @@ When suggesting code changes:
 
 Keep responses concise but thorough.`;
 
-export async function askLLM(userPrompt: string): Promise<string> {
+export async function askLLM(userPrompt: string, codebaseContext?: any): Promise<string> {
   const config = getVSCodeConfig();
 
   try {
     const endpoint = `${config.baseUrl}/ai-chat-gemini`;
 
-    const response = await axios.post(
-      endpoint,
-      {
-        message: userPrompt,
-        systemPrompt: SYSTEM_PROMPT,
-        codeContext: null
-      },
-      {
-        headers: { "Content-Type": "application/json" },
-        timeout: 60000,
-      }
-    );
+    const requestBody = {
+      message: userPrompt,
+      systemPrompt: SYSTEM_PROMPT,
+      codebaseContext: codebaseContext || null,
+    };
 
-    const data = response.data;
-    
-    if (data.tokens) {
-      console.log(`Tokens - Input: ${data.tokens.input}, Output: ${data.tokens.output}, Total: ${data.tokens.total}`);
+    console.log("=== AI REQUEST ===");
+    console.log("Endpoint:", endpoint);
+    console.log("Message length:", userPrompt.length);
+    console.log("Has codebase context:", !!codebaseContext);
+    if (codebaseContext) {
+      console.log("Context files:", codebaseContext.files?.length || 0);
     }
 
-    return data.content || data;
+    const response = await axios.post(endpoint, requestBody, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 120000,
+    });
+
+    if (!response.data) {
+      throw new Error("Empty response from backend");
+    }
+
+    const data = response.data;
+
+    if (data.tokens) {
+      console.log(`✅ Tokens - Input: ${data.tokens.input}, Output: ${data.tokens.output}`);
+    }
+
+    const content = data.content || data;
+    
+    if (!content || content.length === 0) {
+      throw new Error("Empty content in response");
+    }
+    console.log(userPrompt,'\n\n\n')
+    console.log(content);
+    
+    return content;
   } catch (error) {
-    console.error("Error calling backend:", error);
-    return handleLLMError(error);
+    console.error("❌ AI Service Error:", error);
+    
+    if (axios.isAxiosError(error)) {
+      const err = error as AxiosError;
+      
+      if (err.code === 'ECONNREFUSED') {
+        throw new Error("Backend server is not running. Please start the Spring Boot server.");
+      }
+      
+      if (err.response) {
+        console.error("Response error:", err.response.status, err.response.data);
+        throw new Error(`Backend error: ${err.response.status} - ${JSON.stringify(err.response.data)}`);
+      }
+      
+      if (err.request) {
+        throw new Error("No response from backend. Check if server is running on " + config.baseUrl);
+      }
+    }
+    
+    throw error;
   }
 }
 
