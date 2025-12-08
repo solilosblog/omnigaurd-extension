@@ -1,0 +1,194 @@
+# Semgrep Configuration for AI Dev Assistant
+# This configuration enables comprehensive code analysis for better AI responses
+
+# Include community-maintained rulesets
+rules:
+  # Security vulnerabilities
+  - id: no-hardcoded-credentials
+    pattern: |
+      const $KEY = "$VALUE"
+    message: Potential hardcoded credential found
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: ["CWE-798"]
+      owasp: ["A07:2021"]
+
+  - id: no-eval-usage
+    pattern: eval($ARG)
+    message: Using eval() is dangerous and can lead to code injection
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: ["CWE-95"]
+
+  - id: no-console-log-production
+    pattern: console.log(...)
+    message: Console.log statements should be removed in production code
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: code-quality
+
+  - id: async-without-await
+    pattern: |
+      async function $FUNC(...) {
+        ...
+      }
+    pattern-not-inside: |
+      async function $FUNC(...) {
+        ...
+        await ...
+        ...
+      }
+    message: Async function without await may not need to be async
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: code-quality
+
+  - id: promise-without-catch
+    pattern: |
+      $PROMISE.then(...)
+    pattern-not: |
+      $PROMISE.then(...).catch(...)
+    message: Promise chain should include .catch() for error handling
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: error-handling
+
+  - id: sql-injection-risk
+    patterns:
+      - pattern: |
+          $QUERY = "SELECT ... " + $INPUT + " ..."
+      - pattern-not: |
+          $QUERY = "SELECT ... " + $SAFE + " ..."
+    message: Potential SQL injection vulnerability - use parameterized queries
+    severity: ERROR
+    languages: [javascript, typescript, python, java]
+    metadata:
+      category: security
+      cwe: ["CWE-89"]
+      owasp: ["A03:2021"]
+
+  - id: xss-innerhtml-risk
+    pattern: |
+      $ELEM.innerHTML = $INPUT
+    message: Setting innerHTML with user input can lead to XSS attacks
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: ["CWE-79"]
+      owasp: ["A03:2021"]
+
+  - id: weak-crypto-algorithm
+    patterns:
+      - pattern-either:
+          - pattern: crypto.createHash('md5')
+          - pattern: crypto.createHash('sha1')
+    message: MD5 and SHA1 are weak cryptographic algorithms - use SHA256 or stronger
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: ["CWE-327"]
+
+  - id: missing-error-handling
+    pattern: |
+      try {
+        ...
+      } catch($E) {
+
+      }
+    message: Empty catch block - errors should be properly handled or logged
+    severity: WARNING
+    languages: [javascript, typescript, java, python]
+    metadata:
+      category: error-handling
+
+  - id: unused-variable
+    pattern: |
+      const $VAR = ...;
+    pattern-not-inside: |
+      const $VAR = ...;
+      ...
+      $VAR
+    message: Unused variable declaration
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: code-quality
+
+  - id: magic-numbers
+    pattern-either:
+      - pattern: |
+          if ($X > 100) { ... }
+      - pattern: |
+          if ($X < 1000) { ... }
+    message: Magic numbers should be replaced with named constants
+    severity: INFO
+    languages: [javascript, typescript, java, python]
+    metadata:
+      category: code-quality
+
+  - id: insecure-random
+    pattern: Math.random()
+    message: Math.random() is not cryptographically secure - use crypto.randomBytes() for security purposes
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: ["CWE-330"]
+
+  - id: path-traversal-risk
+    pattern: |
+      fs.readFile($PATH + $INPUT, ...)
+    message: Potential path traversal vulnerability - validate and sanitize file paths
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: ["CWE-22"]
+      owasp: ["A01:2021"]
+
+  - id: missing-null-check
+    patterns:
+      - pattern: $OBJ.$PROP
+      - pattern-not-inside: |
+          if ($OBJ) {
+            ...
+            $OBJ.$PROP
+            ...
+          }
+      - pattern-not-inside: |
+          $OBJ?.$PROP
+    message: Potential null reference - add null check or use optional chaining
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: defensive-programming
+
+  - id: deprecated-api-usage
+    pattern-either:
+      - pattern: Buffer($SIZE)
+      - pattern: new Buffer($SIZE)
+    message: Buffer() constructor is deprecated - use Buffer.alloc() or Buffer.from()
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: code-quality
+
+# Configuration options
+options:
+  # Respect .gitignore
+  use_git_ignore: true
+
+  # Skip large files
+  max_target_bytes: 1000000
+
+  # Timeout for single file
+  timeout: 30

@@ -16,11 +16,21 @@ const SYSTEM_PROMPT = `You are an AI coding assistant integrated into VS Code. Y
 - Explaining code concepts
 - Refactoring and optimization
 - Writing unit tests
+- Security vulnerability analysis
+- Code quality improvements
 
 When suggesting code changes:
 1. Provide clear explanations
 2. Show complete code blocks with proper syntax highlighting
 3. Explain the reasoning behind changes
+4. Prioritize security vulnerabilities and critical issues identified by static analysis tools
+
+If Semgrep analysis findings are provided in the codebase context:
+- ALWAYS address critical security issues (ERROR severity) first
+- Explain the security implications of identified vulnerabilities
+- Provide secure code alternatives with explanations
+- Reference CWE and OWASP classifications when available
+- Suggest best practices to prevent similar issues
 
 Keep responses concise but thorough.`;
 
@@ -42,7 +52,16 @@ export async function askLLM(userPrompt: string, codebaseContext?: any): Promise
     console.log("  ├─ Files in batch:", codebaseContext.files?.length || 0);
     console.log("  ├─ Graph nodes:", codebaseContext.graph?.metadata?.dependencyGraph?.nodes?.length || 0);
     console.log("  └─ Graph edges:", codebaseContext.graph?.metadata?.dependencyGraph?.edges?.length || 0);
-    
+
+    if (codebaseContext.semgrepAnalysis) {
+      console.log("🔒 Semgrep Analysis:");
+      console.log("  ├─ Total findings:", codebaseContext.semgrepAnalysis.totalFindings);
+      console.log("  ├─ Critical:", codebaseContext.semgrepAnalysis.criticalCount);
+      console.log("  ├─ High:", codebaseContext.semgrepAnalysis.highCount);
+      console.log("  ├─ Medium:", codebaseContext.semgrepAnalysis.mediumCount);
+      console.log("  └─ Low:", codebaseContext.semgrepAnalysis.lowCount);
+    }
+
     if (codebaseContext.files && codebaseContext.files.length > 0) {
       console.log("📂 Files in this batch:");
       codebaseContext.files.forEach((file: any, index: number) => {

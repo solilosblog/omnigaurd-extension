@@ -10,6 +10,8 @@ A powerful AI coding assistant extension for Visual Studio Code, similar to Clau
 - ⚡ **Command Execution** - Run suggested terminal commands (with your permission)
 - 🔒 **Workspace Trust** - Respects VS Code's security model
 - 🎨 **Beautiful UI** - Modern chat interface with Tailwind CSS
+- 🛡️ **Semgrep Integration** - Security & code quality analysis powered by Semgrep static analysis
+- 📊 **Vulnerability Detection** - Automatic detection of security issues, code smells, and best practice violations
 
 ## Installation & Setup
 
@@ -19,6 +21,7 @@ A powerful AI coding assistant extension for Visual Studio Code, similar to Clau
 - Node.js 16.x or higher
 - npm or yarn
 - OpenAI API key (get one at https://platform.openai.com/api-keys)
+- **[Optional but Recommended]** Semgrep CLI for enhanced security analysis (see [Semgrep Setup Guide](./SETUP_SEMGREP.md))
 
 ### Quick Start
 
@@ -243,6 +246,76 @@ Edit the `SYSTEM_PROMPT` constant in `src/aiService.ts` to change the AI's behav
 
 Edit `media/chat.html` to customize colors, fonts, and layout. The UI uses Tailwind CSS for styling.
 
+## 🛡️ Semgrep Security Integration
+
+The extension now includes **Semgrep** static analysis for enhanced security and code quality insights!
+
+### What is Semgrep?
+
+[Semgrep](https://semgrep.dev/) is a powerful static analysis tool that finds bugs, detects security vulnerabilities, and enforces code standards. It helps the AI provide:
+
+- 🔒 **Security vulnerability detection** (SQL injection, XSS, hardcoded secrets)
+- 📊 **Code quality issues** (unused variables, magic numbers, empty catches)
+- ✅ **Best practice enforcement** (proper async/await, secure crypto)
+- 🎯 **OWASP & CWE classifications** for better security understanding
+
+### Quick Setup
+
+1. **Install Semgrep**:
+   ```bash
+   pip install semgrep
+   ```
+
+2. **Verify installation**:
+   ```bash
+   semgrep --version
+   ```
+
+3. **That's it!** The extension will automatically use Semgrep when analyzing code.
+
+### How It Enhances AI Responses
+
+**Without Semgrep:**
+```
+User: Review this code
+AI: The code looks reasonable. You might want to add error handling.
+```
+
+**With Semgrep:**
+```
+User: Review this code
+AI: 🔒 Security Analysis Found Critical Issues:
+
+1. ❌ SQL Injection Risk (line 42)
+   - Issue: Concatenating user input into SQL query
+   - CWE: CWE-89 | OWASP: A03:2021
+   - Fix: Use parameterized queries
+
+   ❌ Vulnerable:
+   db.query("SELECT * FROM users WHERE id = " + userId)
+
+   ✅ Secure:
+   db.query("SELECT * FROM users WHERE id = ?", [userId])
+```
+
+### Configuration
+
+Enable/disable and configure in VS Code Settings:
+
+```json
+{
+  "aiDevAssistant.semgrep.enabled": true,
+  "aiDevAssistant.semgrep.rulesets": ["auto", "p/security-audit"],
+  "aiDevAssistant.semgrep.timeout": 30
+}
+```
+
+### Documentation
+
+- 📖 **[Complete Semgrep Integration Guide](./SEMGREP_INTEGRATION.md)**
+- 🚀 **[Quick Setup Guide](./SETUP_SEMGREP.md)**
+- 🔧 **[Custom Rules](https://semgrep.dev/docs/writing-rules/overview)**
+
 ## Contributing
 
 Contributions are welcome! Please:
@@ -266,7 +339,8 @@ MIT License - see LICENSE file for details
 ## Acknowledgments
 
 - Built with the VS Code Extension API
-- Powered by OpenAI GPT models
+- Powered by OpenAI GPT models and Google Gemini
+- Security analysis by [Semgrep](https://semgrep.dev/)
 - Inspired by Claude Code and GitHub Copilot Chat
 
 ---
