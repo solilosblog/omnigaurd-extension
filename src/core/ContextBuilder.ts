@@ -1,7 +1,6 @@
 import { Batch } from "./BatchManager";
 import { DependencyGraph, DependencyGraphBuilder } from "../graph/DependencyGraphBuilder";
 import { FileAnalysis } from "../codeAnalysis/astParser";
-import { SemgrepAnalyzer, SemgrepAnalysisResult } from "../codeAnalysis/semgrepAnalyzer";
 
 export interface ConversationContext {
   completedBatches: number[];
@@ -30,22 +29,6 @@ export interface CodebaseContext {
       transitive: string[];
     };
   }>;
-  semgrepAnalysis?: {
-    summary: string;
-    totalFindings: number;
-    criticalCount: number;
-    highCount: number;
-    mediumCount: number;
-    lowCount: number;
-    topFindings: Array<{
-      check_id: string;
-      path: string;
-      line: number;
-      severity: string;
-      message: string;
-      category?: string;
-    }>;
-  };
   conversationContext?: {
     previousBatches: number[];
     keyTakeaways: string[];
@@ -55,13 +38,9 @@ export interface CodebaseContext {
 
 export class ContextBuilder {
   private graphBuilder: DependencyGraphBuilder;
-  private semgrepAnalyzer: SemgrepAnalyzer | null = null;
 
-  constructor(graphBuilder: DependencyGraphBuilder, workspaceRoot?: string) {
+  constructor(graphBuilder: DependencyGraphBuilder) {
     this.graphBuilder = graphBuilder;
-    if (workspaceRoot) {
-      this.semgrepAnalyzer = new SemgrepAnalyzer(workspaceRoot);
-    }
   }
 
   public async buildContext(
@@ -69,31 +48,6 @@ export class ContextBuilder {
     graph: DependencyGraph,
     conversationHistory?: ConversationContext
   ): Promise<CodebaseContext> {
-    // Run Semgrep analysis on batch files
-    let semgrepAnalysis = undefined;
-    if (this.semgrepAnalyzer) {
-      const analysis = await this.semgrepAnalyzer.analyzeFiles(batch.filePaths);
-      if (analysis) {
-        semgrepAnalysis = {
-          summary: analysis.summary,
-          totalFindings: analysis.totalFindings,
-          criticalCount: analysis.criticalCount,
-          highCount: analysis.highCount,
-          mediumCount: analysis.mediumCount,
-          lowCount: analysis.lowCount,
-          topFindings: this.semgrepAnalyzer.getTopFindings(analysis, 10).map(f => ({
-            check_id: f.check_id,
-            path: f.path,
-            line: f.start.line,
-            severity: f.extra.severity,
-            message: f.extra.message,
-            category: f.extra.metadata.category,
-          })),
-        };
-      }
-      console.log(`Semgrep analysis completed for batch ${analysis ? "with findings" : "with no findings"}.`);
-    }
-
     return {
       mode: "batch",
       batchNumber: batch.id,
@@ -115,7 +69,6 @@ export class ContextBuilder {
           transitive: [],
         },
       })),
-      semgrepAnalysis,
       conversationContext: conversationHistory
         ? {
             previousBatches: conversationHistory.completedBatches,

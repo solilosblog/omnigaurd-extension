@@ -379,56 +379,6 @@
           "default": true,
           "description": "Show detailed error summary after indexing",
           "order": 26
-        },
-        "aiDevAssistant.semgrep.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable Semgrep static analysis for enhanced code insights",
-          "order": 27
-        },
-        "aiDevAssistant.semgrep.rulesets": {
-          "type": "array",
-          "default": [
-            "auto"
-          ],
-          "items": {
-            "type": "string",
-            "enum": [
-              "auto",
-              "p/security-audit",
-              "p/secrets",
-              "p/owasp-top-ten",
-              "p/javascript",
-              "p/typescript",
-              "p/python",
-              "p/java",
-              "p/react",
-              "p/nodejs",
-              "p/ci"
-            ]
-          },
-          "description": "Semgrep rulesets to use (auto uses .semgrep.yml)",
-          "order": 28
-        },
-        "aiDevAssistant.semgrep.timeout": {
-          "type": "number",
-          "default": 30,
-          "minimum": 10,
-          "maximum": 120,
-          "description": "Timeout for Semgrep analysis (seconds)",
-          "order": 29
-        },
-        "aiDevAssistant.semgrep.maxFileSize": {
-          "type": "number",
-          "default": 1000000,
-          "description": "Maximum file size for Semgrep analysis (bytes)",
-          "order": 30
-        },
-        "aiDevAssistant.semgrep.includeInContext": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include Semgrep findings in AI context for better responses",
-          "order": 31
         }
       }
     }
@@ -456,7 +406,6 @@
     "glob": "^10.3.10",
     "mocha": "^10.2.0",
     "rimraf": "^5.0.5",
-    "semgrep": "^0.0.1",
     "typescript": "^5.3.3"
   },
   "dependencies": {
